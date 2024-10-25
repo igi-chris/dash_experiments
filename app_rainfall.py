@@ -14,8 +14,8 @@ from dash_table.Format import Format, Scheme
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 # Initial position and radius
-initial_lat = 52.5
-initial_lon = -1.5
+initial_lat = 52.45
+initial_lon = -2.15
 initial_radius = 20  # in km
 
 app.layout = dbc.Container([
@@ -57,7 +57,7 @@ app.layout = dbc.Container([
                     dbc.Label("Longitude:"),
                     dbc.Input(id="longitude-input", type="number", value=initial_lon, step=0.0001),
                     html.Br(),
-                    dl.Map(center=[initial_lat, initial_lon], zoom=6, children=[
+                    dl.Map(center=[initial_lat, initial_lon], zoom=8, children=[
                         dl.TileLayer(),
                         dl.Circle(
                             center=[initial_lat, initial_lon],
@@ -99,7 +99,7 @@ app.layout = dbc.Container([
                         color="success",
                         className="mt-3"
                     ),
-                    html.Div(id="message", style={"marginTop": "10px", "color": "red"})
+                    html.Div(id="message", style={"marginTop": "10px", "color": "slategray"})
                 ], width=6)
             ])
         ]
@@ -174,7 +174,7 @@ def toggle_collapse(toggle_n_clicks, fetch_n_clicks, lat, lon, radius, start_dat
 
     # Create summary text
     if lat is not None and lon is not None:
-        summary = f"({lat:.4f}, {lon:.4f}) +{radius}km | {start_date} to {end_date}"
+        summary = f"({lat:.2f}, {lon:.2f}) +{radius}km | {start_date} to {end_date}"
     else:
         summary = "No location selected"
 
@@ -302,7 +302,7 @@ def fetch_data(n_clicks, lat, lon, radius, start_date, end_date):
                 size="total_rainfall",
                 color_continuous_scale=px.colors.sequential.Blues,
                 size_max=15,
-                zoom=6
+                zoom=8
             )
             # Set the mapbox style to a less colorful one
             fig.update_layout(mapbox_style="carto-positron")
