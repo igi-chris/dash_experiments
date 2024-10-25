@@ -21,14 +21,28 @@ initial_lon = -1.5
 app.layout = dbc.Container([
     html.H1("Rainfall Data Explorer", className="text-center"),
 
-    # Button to toggle the visibility of the selection controls
-    dbc.Button(
-        "Show/Hide Selection Controls",
-        id="toggle-button",
-        color="primary",
-        n_clicks=0,
-        style={"margin-bottom": "10px"}
-    ),
+    # Row containing button and summary
+    dbc.Row([
+        dbc.Col([
+            dbc.Button(
+                "Show/Hide Selection Controls",
+                id="toggle-button", 
+                color="primary",
+                n_clicks=0,
+                className="me-2"
+            ),
+            html.Div(
+                id="selection-summary",
+                className="d-inline-block",
+                style={
+                    "padding": "6px 12px",
+                    "border": "1px solid #ccc",
+                    "border-radius": "4px",
+                    "background-color": "#f8f9fa"
+                }
+            )
+        ], width=12)
+    ], className="mb-3"),
 
     dbc.Collapse(
         id="collapse",
@@ -93,26 +107,39 @@ app.layout = dbc.Container([
     ])
 ])
 
-# Callback to control the collapse (auto-hide controls when Fetch Data is clicked)
+# Callback to control the collapse and update summary
 @app.callback(
-    Output("collapse", "is_open"),
+    [Output("collapse", "is_open"),
+     Output("selection-summary", "children")],
     [Input("toggle-button", "n_clicks"),
-     Input("fetch-data-button", "n_clicks")],
+     Input("fetch-data-button", "n_clicks"),
+     Input("location-marker", "position"),
+     Input("radius-input", "value"),
+     Input("start-date-picker", "date"),
+     Input("end-date-picker", "date")],
     [State("collapse", "is_open")]
 )
-def toggle_collapse(toggle_n_clicks, fetch_n_clicks, is_open):
+def toggle_collapse(toggle_n_clicks, fetch_n_clicks, position, radius, start_date, end_date, is_open):
     ctx = dash.callback_context
+    
+    # Create summary text
+    if position:
+        lat, lon = position
+        summary = f"Location: ({lat:.2f}, {lon:.2f}) | Radius: {radius}km | Period: {start_date} to {end_date}"
+    else:
+        summary = "No location selected"
 
     if not ctx.triggered:
-        return is_open
+        return is_open, summary
     else:
         button_id = ctx.triggered[0]['prop_id'].split('.')[0]
 
         if button_id == "toggle-button":
-            return not is_open  # Toggle the collapse
+            return not is_open, summary
         elif button_id == "fetch-data-button":
-            return False  # Hide the controls
-    return is_open
+            return False, summary
+        else:
+            return is_open, summary
 
 @app.callback(
     [Output("data-table", "data"),
