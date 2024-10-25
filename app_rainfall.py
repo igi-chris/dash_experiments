@@ -5,10 +5,12 @@ from datetime import date, timedelta
 
 import dash
 from dash import Dash, dcc, html, Input, Output, State, dash_table
-import dash_leaflet as dl
 import dash_bootstrap_components as dbc
 import plotly.express as px
 from pyproj import Transformer
+import dash_leaflet as dl
+
+from dash_table.Format import Format, Scheme
 
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
@@ -19,34 +21,49 @@ initial_lon = -1.5
 app.layout = dbc.Container([
     html.H1("Rainfall Data Explorer", className="text-center"),
 
-    dbc.Row([
-        dbc.Col([
-            html.H4("Select Location"),
-            dl.Map(center=[initial_lat, initial_lon], zoom=6, children=[
-                dl.TileLayer(),
-                dl.Marker(
-                    position=[initial_lat, initial_lon],
-                    id="location-marker",
-                    draggable=True
-                )
-            ], style={'width': '100%', 'height': '50vh'}, id="map")
-        ], width=6),
+    # Button to toggle the visibility of the selection controls
+    dbc.Button(
+        "Show/Hide Selection Controls",
+        id="toggle-button",
+        color="primary",
+        n_clicks=0,
+        style={"margin-bottom": "10px"}
+    ),
 
-        dbc.Col([
-            html.H4("Parameters"),
-            dbc.Label("Radius (km):"),
-            dbc.Input(id="radius-input", type="number", value=40, min=1, max=100, step=1),
-            html.Br(),
-            dbc.Label("Start Date:"),
-            dcc.DatePickerSingle(id="start-date-picker", date=(date.today() - timedelta(days=7))),
-            html.Br(),
-            dbc.Label("End Date:"),
-            dcc.DatePickerSingle(id="end-date-picker", date=date.today()),
-            html.Br(),
-            dbc.Button("Fetch Data", id="fetch-data-button", color="primary"),
-            html.Div(id="message", style={"marginTop": "10px", "color": "red"})
-        ], width=6)
-    ]),
+    dbc.Collapse(
+        id="collapse",
+        is_open=True,
+        children=[
+            dbc.Row([
+                dbc.Col([
+                    html.H4("Select Location"),
+                    dl.Map(center=[initial_lat, initial_lon], zoom=6, children=[
+                        dl.TileLayer(),
+                        dl.Marker(
+                            position=[initial_lat, initial_lon],
+                            id="location-marker",
+                            draggable=True
+                        )
+                    ], style={'width': '100%', 'height': '50vh'}, id="map")
+                ], width=6),
+
+                dbc.Col([
+                    html.H4("Parameters"),
+                    dbc.Label("Radius (km):"),
+                    dbc.Input(id="radius-input", type="number", value=40, min=1, max=100, step=1),
+                    html.Br(),
+                    dbc.Label("Start Date:"),
+                    dcc.DatePickerSingle(id="start-date-picker", date=(date.today() - timedelta(days=0))),
+                    html.Br(),
+                    dbc.Label("End Date:"),
+                    dcc.DatePickerSingle(id="end-date-picker", date=date.today()),
+                    html.Br(),
+                    dbc.Button("Fetch Data", id="fetch-data-button", color="primary"),
+                    html.Div(id="message", style={"marginTop": "10px", "color": "red"})
+                ], width=6)
+            ])
+        ]
+    ),
 
     dbc.Row([
         dbc.Col([
@@ -54,7 +71,12 @@ app.layout = dbc.Container([
             dcc.Loading(
                 id="loading-table",
                 type="default",
-                children=dash_table.DataTable(id="data-table", page_size=10)
+                children=dash_table.DataTable(
+                    id="data-table",
+                    page_size=10,
+                    sort_action='native',
+                    sort_by=[{"column_id": "total_rainfall", "direction": "desc"}]
+                )
             )
         ], width=12)
     ]),
@@ -70,6 +92,17 @@ app.layout = dbc.Container([
         ], width=12)
     ])
 ])
+
+# Callback to toggle the collapse
+@app.callback(
+    Output("collapse", "is_open"),
+    [Input("toggle-button", "n_clicks")],
+    [State("collapse", "is_open")]
+)
+def toggle_collapse(n_clicks, is_open):
+    if n_clicks:
+        return not is_open
+    return is_open
 
 @app.callback(
     [Output("data-table", "data"),
@@ -150,33 +183,48 @@ def fetch_data(n_clicks, position, radius, start_date, end_date):
             merged_df = pd.merge(st_df, val_df_grouped, on="stationReference", how="left")
             merged_df["total_rainfall"] = merged_df["total_rainfall"].fillna(0)
 
+            # Round total_rainfall to 1 decimal place
+            merged_df["total_rainfall"] = merged_df["total_rainfall"].round(1)
+
             # Prepare table data
-            table_columns = [{"name": col, "id": col} for col in ["label", "stationReference", "easting", "northing", "total_rainfall"]]
+            table_columns = [
+                {"name": "Label", "id": "label"},
+                {"name": "Station Reference", "id": "stationReference"},
+                {"name": "Easting", "id": "easting"},
+                {"name": "Northing", "id": "northing"},
+                {"name": "Total Rainfall (mm)", "id": "total_rainfall",
+                 "type": "numeric",
+                 "format": Format(precision=1, scheme=Scheme.fixed)}
+            ]
+
             table_data = merged_df[["label", "stationReference", "easting", "northing", "total_rainfall"]].to_dict('records')
 
             # Convert easting and northing to latitude and longitude
             easting = merged_df["easting"].astype(float)
             northing = merged_df["northing"].astype(float)
             transformer_to_wgs84 = Transformer.from_crs("EPSG:27700", "EPSG:4326", always_xy=True)
-            lon_lat = transformer_to_wgs84.transform(easting.values, northing.values)
-            merged_df["lon"] = lon_lat[0]
-            merged_df["lat"] = lon_lat[1]
+            lon, lat = transformer_to_wgs84.transform(easting.values, northing.values)
+            merged_df["lon"] = lon
+            merged_df["lat"] = lat
 
-            # Create map figure
+            # Create map figure with sequential color scale
             fig = px.scatter_mapbox(
                 merged_df,
                 lat="lat",
                 lon="lon",
                 hover_name="label",
-                hover_data=["total_rainfall"],
+                hover_data={"total_rainfall": True, "lat": False, "lon": False},
                 color="total_rainfall",
                 size="total_rainfall",
-                color_continuous_scale=px.colors.cyclical.IceFire,
+                color_continuous_scale=px.colors.sequential.Blues,
                 size_max=15,
                 zoom=6
             )
             fig.update_layout(mapbox_style="open-street-map")
             fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
+
+            # Sort table data by total_rainfall descending
+            table_data.sort(key=lambda x: x["total_rainfall"], reverse=True)
 
             return table_data, table_columns, fig, f"Found {len(merged_df)} stations and {len(val_df)} rainfall readings."
 
@@ -185,5 +233,4 @@ def fetch_data(n_clicks, position, radius, start_date, end_date):
             return dash.no_update, dash.no_update, dash.no_update, f"An error occurred: {str(e)}"
 
 if __name__ == "__main__":
-    #app.run_server(debug=True)
-    app.run_server()
+    app.run_server(debug=True)
