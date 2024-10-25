@@ -66,13 +66,30 @@ app.layout = dbc.Container([
                     dbc.Label("Radius (km):"),
                     dbc.Input(id="radius-input", type="number", value=20, min=1, max=200, step=1),
                     html.Br(),
-                    dbc.Label("Start Date:"),
-                    dcc.DatePickerSingle(id="start-date-picker", date=(date.today() - timedelta(days=0))),
-                    html.Br(),
-                    dbc.Label("End Date:"),
-                    dcc.DatePickerSingle(id="end-date-picker", date=date.today()),
-                    html.Br(),
-                    dbc.Button("Fetch Data", id="fetch-data-button", color="success"),
+                    dbc.Row([
+                        dbc.Col([
+                            dbc.Label("Start Date:"),
+                            dcc.DatePickerSingle(
+                                id="start-date-picker",
+                                date=(date.today() - timedelta(days=0)),
+                                display_format='DD/MM/YYYY'
+                            ),
+                        ], width=6),
+                        dbc.Col([
+                            dbc.Label("End Date:"),
+                            dcc.DatePickerSingle(
+                                id="end-date-picker",
+                                date=date.today(),
+                                display_format='DD/MM/YYYY'
+                            ),
+                        ], width=6),
+                    ]),
+                    dbc.Button(
+                        "Fetch Data",
+                        id="fetch-data-button",
+                        color="success",
+                        className="mt-3"
+                    ),
                     html.Div(id="message", style={"marginTop": "10px", "color": "red"})
                 ], width=6)
             ])
