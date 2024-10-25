@@ -27,13 +27,13 @@ app.layout = dbc.Container([
             dbc.Button(
                 "Show/Hide Selection Controls",
                 id="toggle-button", 
-                color="primary",
+                color="dark",
                 n_clicks=0,
                 className="me-2"
             ),
             html.Div(
                 id="selection-summary",
-                className="d-inline-block",
+                className="d-inline-block align-middle",
                 style={
                     "padding": "6px 12px",
                     "border": "1px solid #ccc",
@@ -64,7 +64,7 @@ app.layout = dbc.Container([
                 dbc.Col([
                     html.H4("Parameters"),
                     dbc.Label("Radius (km):"),
-                    dbc.Input(id="radius-input", type="number", value=40, min=1, max=100, step=1),
+                    dbc.Input(id="radius-input", type="number", value=20, min=1, max=200, step=1),
                     html.Br(),
                     dbc.Label("Start Date:"),
                     dcc.DatePickerSingle(id="start-date-picker", date=(date.today() - timedelta(days=0))),
@@ -72,7 +72,7 @@ app.layout = dbc.Container([
                     dbc.Label("End Date:"),
                     dcc.DatePickerSingle(id="end-date-picker", date=date.today()),
                     html.Br(),
-                    dbc.Button("Fetch Data", id="fetch-data-button", color="primary"),
+                    dbc.Button("Fetch Data", id="fetch-data-button", color="success"),
                     html.Div(id="message", style={"marginTop": "10px", "color": "red"})
                 ], width=6)
             ])
@@ -125,21 +125,21 @@ def toggle_collapse(toggle_n_clicks, fetch_n_clicks, position, radius, start_dat
     # Create summary text
     if position:
         lat, lon = position
-        summary = f"Location: ({lat:.2f}, {lon:.2f}) | Radius: {radius}km | Period: {start_date} to {end_date}"
+        summary = f"({lat:.2f}, {lon:.2f}) +{radius}km | {start_date} to {end_date}"
     else:
         summary = "No location selected"
 
     if not ctx.triggered:
         return is_open, summary
-    else:
-        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
-
-        if button_id == "toggle-button":
-            return not is_open, summary
-        elif button_id == "fetch-data-button":
-            return False, summary
-        else:
-            return is_open, summary
+    
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    
+    if button_id == "toggle-button":
+        return not is_open, summary
+    elif button_id == "fetch-data-button":
+        return False, summary
+    else:  # This includes location-marker position changes
+        return is_open, summary
 
 @app.callback(
     [Output("data-table", "data"),
