@@ -1,0 +1,9 @@
+dash
+pandas
+plotly
+pyarrow
+# for rainfall data
+dash-leaflet
+dash-bootstrap-components
+requests
+pyproj
