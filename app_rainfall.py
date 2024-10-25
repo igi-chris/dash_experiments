@@ -1,10 +1,9 @@
 import requests
 import pandas as pd
-import numpy as np
 from datetime import date, timedelta
 
 import dash
-from dash import Dash, dcc, html, Input, Output, State, dash_table
+from dash import Dash, html, dcc, Output, Input, State, dash_table
 import dash_bootstrap_components as dbc
 import plotly.express as px
 from pyproj import Transformer
@@ -14,9 +13,10 @@ from dash_table.Format import Format, Scheme
 
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
-# Initial position of the marker
+# Initial position and radius
 initial_lat = 52.5
 initial_lon = -1.5
+initial_radius = 20  # in km
 
 app.layout = dbc.Container([
     html.H1("Rainfall Data Explorer", className="text-center"),
@@ -26,7 +26,7 @@ app.layout = dbc.Container([
         dbc.Col([
             dbc.Button(
                 "Show/Hide Selection Controls",
-                id="toggle-button", 
+                id="toggle-button",
                 color="dark",
                 n_clicks=0,
                 className="me-2"
@@ -51,20 +51,29 @@ app.layout = dbc.Container([
             dbc.Row([
                 dbc.Col([
                     html.H4("Select Location"),
+                    dbc.Label("Latitude:"),
+                    dbc.Input(id="latitude-input", type="number", value=initial_lat, step=0.0001),
+                    html.Br(),
+                    dbc.Label("Longitude:"),
+                    dbc.Input(id="longitude-input", type="number", value=initial_lon, step=0.0001),
+                    html.Br(),
                     dl.Map(center=[initial_lat, initial_lon], zoom=6, children=[
                         dl.TileLayer(),
-                        dl.Marker(
-                            position=[initial_lat, initial_lon],
-                            id="location-marker",
-                            draggable=True
-                        )
-                    ], style={'width': '100%', 'height': '50vh'}, id="map")
+                        dl.Circle(
+                            center=[initial_lat, initial_lon],
+                            radius=initial_radius * 1000,  # Convert km to meters
+                            id='location-circle',
+                            color='blue',
+                            fillColor='blue',
+                            fillOpacity=0.2,
+                        ),
+                    ], style={'width': '100%', 'height': '50vh'}, id="map"),
                 ], width=6),
 
                 dbc.Col([
                     html.H4("Parameters"),
                     dbc.Label("Radius (km):"),
-                    dbc.Input(id="radius-input", type="number", value=20, min=1, max=200, step=1),
+                    dbc.Input(id="radius-input", type="number", value=initial_radius, min=1, max=200, step=1),
                     html.Br(),
                     dbc.Row([
                         dbc.Col([
@@ -124,38 +133,61 @@ app.layout = dbc.Container([
     ])
 ])
 
+# Callback to update circle center when latitude and longitude inputs change
+@app.callback(
+    Output('location-circle', 'center'),
+    [Input('latitude-input', 'value'),
+     Input('longitude-input', 'value')]
+)
+def update_circle_center(lat, lon):
+    if lat is None or lon is None:
+        return dash.no_update
+    else:
+        return [lat, lon]
+
+# Callback to update circle radius when radius input changes
+@app.callback(
+    Output('location-circle', 'radius'),
+    Input('radius-input', 'value')
+)
+def update_radius(radius):
+    if radius is None:
+        return dash.no_update
+    else:
+        return radius * 1000  # Convert km to meters
+
 # Callback to control the collapse and update summary
 @app.callback(
     [Output("collapse", "is_open"),
      Output("selection-summary", "children")],
     [Input("toggle-button", "n_clicks"),
      Input("fetch-data-button", "n_clicks"),
-     Input("location-marker", "position"),
+     Input("latitude-input", "value"),
+     Input("longitude-input", "value"),
      Input("radius-input", "value"),
      Input("start-date-picker", "date"),
      Input("end-date-picker", "date")],
     [State("collapse", "is_open")]
 )
-def toggle_collapse(toggle_n_clicks, fetch_n_clicks, position, radius, start_date, end_date, is_open):
+def toggle_collapse(toggle_n_clicks, fetch_n_clicks, lat, lon, radius, start_date, end_date, is_open):
     ctx = dash.callback_context
-    
+
     # Create summary text
-    if position:
-        lat, lon = position
-        summary = f"({lat:.2f}, {lon:.2f}) +{radius}km | {start_date} to {end_date}"
+    if lat is not None and lon is not None:
+        summary = f"({lat:.4f}, {lon:.4f}) +{radius}km | {start_date} to {end_date}"
     else:
         summary = "No location selected"
 
     if not ctx.triggered:
         return is_open, summary
-    
+
     button_id = ctx.triggered[0]['prop_id'].split('.')[0]
-    
+
     if button_id == "toggle-button":
         return not is_open, summary
     elif button_id == "fetch-data-button":
         return False, summary
-    else:  # This includes location-marker position changes
+    else:
         return is_open, summary
 
 @app.callback(
@@ -164,20 +196,18 @@ def toggle_collapse(toggle_n_clicks, fetch_n_clicks, position, radius, start_dat
      Output("rainfall-map", "figure"),
      Output("message", "children")],
     [Input("fetch-data-button", "n_clicks")],
-    [State("location-marker", "position"),
+    [State("latitude-input", "value"),
+     State("longitude-input", "value"),
      State("radius-input", "value"),
      State("start-date-picker", "date"),
      State("end-date-picker", "date")],
     prevent_initial_call=True
 )
-def fetch_data(n_clicks, position, radius, start_date, end_date):
-    if position is None:
-        return dash.no_update, dash.no_update, dash.no_update, "Please move the marker to select a location."
+def fetch_data(n_clicks, lat, lon, radius, start_date, end_date):
+    if lat is None or lon is None:
+        return dash.no_update, dash.no_update, dash.no_update, "Please enter valid latitude and longitude."
     else:
-        # Proceed to fetch data
         try:
-            # Get the coordinates
-            lat, lon = position
             print(f"Fetching data for position: lat={lat}, lon={lon}, radius={radius}, start_date={start_date}, end_date={end_date}")
 
             # Convert lat, lon to easting, northing (British National Grid)
@@ -195,7 +225,7 @@ def fetch_data(n_clicks, position, radius, start_date, end_date):
             }
 
             st_response = requests.get(st_l, params=params)
-            st_response.raise_for_status()  # Raise an exception for HTTP errors
+            st_response.raise_for_status()
             st_r = st_response.json()
             st_items = st_r.get("items", [])
             n_st_items = len(st_items)
@@ -257,9 +287,9 @@ def fetch_data(n_clicks, position, radius, start_date, end_date):
             easting = merged_df["easting"].astype(float)
             northing = merged_df["northing"].astype(float)
             transformer_to_wgs84 = Transformer.from_crs("EPSG:27700", "EPSG:4326", always_xy=True)
-            lon, lat = transformer_to_wgs84.transform(easting.values, northing.values)
-            merged_df["lon"] = lon
-            merged_df["lat"] = lat
+            lon_arr, lat_arr = transformer_to_wgs84.transform(easting.values, northing.values)
+            merged_df["lon"] = lon_arr
+            merged_df["lat"] = lat_arr
 
             # Create map figure with sequential color scale and less colorful base map
             fig = px.scatter_mapbox(
