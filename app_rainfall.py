@@ -93,15 +93,25 @@ app.layout = dbc.Container([
     ])
 ])
 
-# Callback to toggle the collapse
+# Callback to control the collapse (auto-hide controls when Fetch Data is clicked)
 @app.callback(
     Output("collapse", "is_open"),
-    [Input("toggle-button", "n_clicks")],
+    [Input("toggle-button", "n_clicks"),
+     Input("fetch-data-button", "n_clicks")],
     [State("collapse", "is_open")]
 )
-def toggle_collapse(n_clicks, is_open):
-    if n_clicks:
-        return not is_open
+def toggle_collapse(toggle_n_clicks, fetch_n_clicks, is_open):
+    ctx = dash.callback_context
+
+    if not ctx.triggered:
+        return is_open
+    else:
+        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+        if button_id == "toggle-button":
+            return not is_open  # Toggle the collapse
+        elif button_id == "fetch-data-button":
+            return False  # Hide the controls
     return is_open
 
 @app.callback(
@@ -207,7 +217,7 @@ def fetch_data(n_clicks, position, radius, start_date, end_date):
             merged_df["lon"] = lon
             merged_df["lat"] = lat
 
-            # Create map figure with sequential color scale
+            # Create map figure with sequential color scale and less colorful base map
             fig = px.scatter_mapbox(
                 merged_df,
                 lat="lat",
@@ -220,7 +230,8 @@ def fetch_data(n_clicks, position, radius, start_date, end_date):
                 size_max=15,
                 zoom=6
             )
-            fig.update_layout(mapbox_style="open-street-map")
+            # Set the mapbox style to a less colorful one
+            fig.update_layout(mapbox_style="carto-positron")
             fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
 
             # Sort table data by total_rainfall descending
